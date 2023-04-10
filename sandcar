@@ -1,0 +1,1325 @@
+package com.bincube.sz.A_shenzhou.activity.order;
+
+import android.annotation.TargetApi;
+import android.app.Dialog;
+import android.content.Context;
+import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
+import android.support.annotation.RequiresApi;
+import android.support.v7.app.AlertDialog;
+import android.support.v7.widget.PopupMenu;
+import android.util.AttributeSet;
+import android.view.KeyEvent;
+import android.view.LayoutInflater;
+import android.view.MenuItem;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.widget.AdapterView;
+import android.widget.Button;
+import android.widget.GridView;
+import android.widget.ImageButton;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.alibaba.fastjson.JSON;
+import com.bincube.sz.A_shenzhou.adapter.ImageForAssistListAdapter;
+import com.bincube.sz.A_shenzhou.adapter.ImageForListAdapter;
+import com.bincube.sz.A_shenzhou.adapter.ImageForTypeAdapter;
+import com.bincube.sz.DButil.OrderProcessSandUtil;
+import com.bincube.sz.DButil.OrderUtil;
+import com.bincube.sz.DButil.StationUtil;
+import com.bincube.sz.Myworker;
+import com.bincube.sz.R;
+import com.bincube.sz.base.ConfigActivity;
+import com.bincube.sz.constant.AppConstants;
+import com.bincube.sz.constant.Constant;
+import com.bincube.sz.constant.SandConstants;
+import com.bincube.sz.constant.SysConstant;
+import com.bincube.sz.constant.URLConstant;
+import com.bincube.sz.control.StationProcessControl;
+import com.bincube.sz.customControl.GridRelativeLayout;
+import com.bincube.sz.customControl.HangingStationView;
+import com.bincube.sz.customControl.ScreenShotView;
+import com.bincube.sz.customControl.StationView;
+import com.bincube.sz.customControl.dragControl.AssistPlateViewDrager;
+import com.bincube.sz.customControl.dragControl.CombinCtrViewLeftDrager;
+import com.bincube.sz.customControl.dragControl.TextViewCombinationLeftControl;
+import com.bincube.sz.entity.CurrencyMessageEvent;
+import com.bincube.sz.entity.Dot;
+import com.bincube.sz.entity.OrderProcess;
+import com.bincube.sz.entity.OrderProcessUndoRedoInfo;
+import com.bincube.sz.entity.RotationInfo;
+import com.bincube.sz.entity.Station;
+import com.bincube.sz.entity.StationProcess;
+import com.bincube.sz.entity.vo.Assistplate;
+import com.bincube.sz.utils.BitmapUtils;
+import com.bincube.sz.utils.DialogUtils.DialogUtil;
+import com.bincube.sz.utils.DialogUtils.WeiboDialogUtils;
+import com.bincube.sz.utils.FileUtil;
+import com.bincube.sz.utils.OkHttpUtil;
+import com.bincube.sz.utils.ToastUtils;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+
+import org.apache.commons.lang3.StringUtils;
+import org.greenrobot.eventbus.EventBus;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.File;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+
+import static android.view.View.GONE;
+import static android.view.View.VISIBLE;
+import static com.bincube.sz.R.dimen.x1;
+import static com.bincube.sz.R.dimen.y1;
+import static java.security.AccessController.getContext;
+
+public class SandCarTypeSetActivity extends ConfigActivity implements View.OnClickListener,View.OnTouchListener{
+
+    private Context mtx;
+    public static boolean flagInEdit=true; //沙盘排车是否处于编辑状态
+    public static GridRelativeLayout rlControl;
+
+    /* UI */
+    private LinearLayout llyTool;
+    private GridView gridView;  // 工具栏-角度选择
+    private GridView gridViewModel; //模型设置
+    private Button btnVertical;     //竖直对齐
+    private ImageButton imgbtnUp;  //上
+    private ImageButton imgbtnDown;  //下
+    private ImageButton imgbtnLeft;  //左
+    private ImageButton imgbtnRight;  //右移
+    private ImageButton imgbtnRotationLeft; // 顺时针旋转
+    private ImageButton imgbtnRotationRight; // 逆时针旋转
+    private Button btnCreateCar;    // 新建车型
+    private Button btnRemove;       //删除选中控件
+    private TextView tvback; //返回按钮
+    private ScrollView mScrollView;
+    private Button btnConfirm;  //确认按钮
+    private Button btnSelect;   //全选按钮
+    private String workerShopNum;   // 登录账号的工厂
+    private String workerGroupNo;   // 登录账号的组别
+    private String workerFactory;   // 登录账号的工厂
+    private String loginName;   //登录的账户
+    private Button btnArrow;    //设置箭头图形
+    private Dialog mWeiboDialog;//加载动画
+    private Button btnHorizontal;   //水平对齐
+    private List<StationProcess> list=new ArrayList<>(); //排进沙盘的工序
+    private List<StationProcess> mOrderProcesses = new ArrayList<>(); // 沙盘左侧的工序列表内容
+    public static List<StationView> stationViews = new ArrayList<>(); // 沙盘上灰色不可移动的控件
+    public static List<HangingStationView> hangingStationViews = new ArrayList<>(); // 沙盘上灰色不可移动的控件
+    private List<StationProcess> showOrderProcess_sand = new ArrayList<>(); // 当前订单需要在沙盘上展示的工序
+    public static List<Station> stationList = new ArrayList<>(); // 从station表中查询到的空工位信息
+    public List<Assistplate> assistList = new ArrayList<>(); // 从assistplate表查询辅助台版信息
+    public List<Assistplate> assistInfoList = new ArrayList<>();
+    private static List<RotationInfo> specialCarType = new ArrayList<>();  //当前部门特殊车型
+    private List<CombinCtrViewLeftDrager> selectCombinCtrViewLeftDrager = new ArrayList<>();
+    public static List<CombinCtrViewLeftDrager> combinationControls = new ArrayList<>(); // 沙盘上的可移动控件
+    protected boolean isCreated = false;
+
+    private GridView gridView_assist;
+    //序号
+    List<Integer> sortList = new ArrayList<>();
+    private int limitCarNum = 6;
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_set_car_type);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN); //隐藏状态栏
+        workerShopNum = Myworker.instance().getWorker().getWorkShopNum();
+        workerGroupNo = Myworker.instance().getWorker().getGroupNo();
+        workerFactory = Myworker.instance().getWorker().getFactory();
+        loginName = Myworker.instance().getWorker().getAccount();
+        mtx = this;
+        getParticularType(mtx,workerFactory);
+        initData();
+        initView();
+        //序号常量初始化
+        for (int i = 0;i < limitCarNum;i++){
+            sortList.add(i+1);
+        }
+    }
+
+    private void initData(){
+    }
+    private void initView(){
+        String url =URLConstant.getAssistList(workerFactory);
+        new OkHttpUtil(mtx).get(url, new OkHttpUtil.HttpCallback() {
+            @Override
+            public void onStart() {
+            }
+
+            @Override
+            public void onSuccess(String data) throws JSONException {
+                JSONObject object = new JSONObject(data);
+                int retCode = object.optInt("code");
+                if (retCode == AppConstants.INT_RESULT_STATE_SUCCEED) {
+                    JSONArray assistInfo = object.optJSONArray("data");
+                    if (assistInfo != null && assistInfo.length() > 0) {
+                        assistList = new Gson().fromJson(object.optString("data"), new TypeToken<List<Assistplate>>() {
+                        }.getType());
+                    }
+                }
+            }
+
+            @Override
+            public void onError(String msg) {
+
+            }
+        });
+
+        ImageForAssistListAdapter imageForAssistListAdapter  = new ImageForAssistListAdapter(mtx);
+        String assisUrl =URLConstant.getValidAssistList(workerFactory,0);
+        new OkHttpUtil(mtx).get(assisUrl, new OkHttpUtil.HttpCallback() {
+            @Override
+            public void onStart() {
+
+            }
+
+            @Override
+            public void onSuccess(String data) throws JSONException {
+                JSONObject object = new JSONObject(data);
+                int retCode = object.optInt("code");
+                if (retCode == AppConstants.INT_RESULT_STATE_SUCCEED) {
+                    JSONArray assistInfo = object.optJSONArray("data");
+                    if (assistInfo != null && assistInfo.length() > 0) {
+                        assistInfoList = new Gson().fromJson(object.optString("data"), new TypeToken<List<Assistplate>>() {
+                        }.getType());
+                    }
+                    imageForAssistListAdapter.setData(assistInfoList);
+                }
+            }
+
+            @Override
+            public void onError(String msg) {
+
+            }
+        });
+        btnHorizontal = (Button) findViewById(R.id.btnHorizontal);
+        btnHorizontal.setOnClickListener(this);
+        btnVertical = (Button) findViewById(R.id.btnVertical);
+        btnVertical.setOnClickListener(this);
+        tvback = (TextView) findViewById(R.id.tvback);
+        tvback.setOnClickListener(this);
+        btnConfirm = (Button) findViewById(R.id.btnConfirm);
+        btnSelect = (Button) findViewById(R.id.btnSelect);
+        btnSelect.setOnClickListener(this);
+        btnConfirm.setOnClickListener(this);
+        btnArrow = (Button) findViewById(R.id.btnArrow);
+        btnArrow.setOnClickListener(this);
+        mScrollView = (ScrollView) findViewById(R.id.scrollView);
+        imgbtnUp = (ImageButton) findViewById(R.id.imgbtnUp);
+        btnCreateCar = (Button) findViewById(R.id.btnCreateCar);
+        btnCreateCar.setOnClickListener(this);
+        imgbtnUp.setOnClickListener( this);
+        imgbtnUp.setOnTouchListener(this);
+        imgbtnDown = (ImageButton) findViewById(R.id.imgbtnDown);
+        imgbtnDown.setOnClickListener( this);
+        imgbtnDown.setOnTouchListener(this);
+        imgbtnLeft = (ImageButton) findViewById(R.id.imgbtnLeft);
+        imgbtnLeft.setOnClickListener( this);
+        imgbtnLeft.setOnTouchListener(this);
+        imgbtnRight = (ImageButton) findViewById(R.id.imgbtnRight);
+        imgbtnRight.setOnClickListener( this);
+        imgbtnRight.setOnTouchListener(this);
+        imgbtnRotationLeft = (ImageButton) findViewById(R.id.imgbtnRotationLeft);
+        imgbtnRotationLeft.setOnClickListener(this);
+        imgbtnRotationLeft.setOnTouchListener(this);
+        imgbtnRotationRight = (ImageButton) findViewById(R.id.imgbtnRotationRight);
+        imgbtnRotationRight.setOnClickListener(this);
+        imgbtnRotationRight.setOnTouchListener(this);
+        btnRemove = (Button) findViewById(R.id.btnRemove);
+        btnRemove.setOnClickListener(this);
+        rlControl = (GridRelativeLayout) findViewById(R.id.rlControl);
+        rlControl.setOnTouchListener(this);
+        llyTool = (LinearLayout) findViewById(R.id.llyTool);
+        gridView = (GridView) findViewById(R.id.gridView);
+
+        ImageForListAdapter imageAdapter = new ImageForListAdapter(mtx);
+        gridView.setAdapter(imageAdapter);
+        final List<RotationInfo> rotationInfos = RotationInfo.getRotationInfoList(1);
+        imageAdapter.setData(rotationInfos);
+        gridView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
+                RotationInfo rotationInfo = rotationInfos.get(i);
+                if (rotationInfo.getShape().equals("")) {
+                    for (CombinCtrViewLeftDrager itemCombinCtrViewLeftDrager :
+                            combinationControls) {
+                        if (itemCombinCtrViewLeftDrager.isSelect()) {
+                            if (itemCombinCtrViewLeftDrager.getRotation() != 0.0f){
+                                itemCombinCtrViewLeftDrager.setRotation(0);
+                                itemCombinCtrViewLeftDrager.getProcess().setRotation(0);
+                            }
+                            itemCombinCtrViewLeftDrager.setChangHeight(0);
+                            if (itemCombinCtrViewLeftDrager.getType().equals("arrow")){
+                                itemCombinCtrViewLeftDrager.ImgWorker.setRotation(rotationInfo.getRotations().get(0));
+                            }else{
+                                itemCombinCtrViewLeftDrager.setRootLlyRotation(rotationInfo.getRotations().get(0));
+                            }
+                            itemCombinCtrViewLeftDrager.getProcess().setRotation(rotationInfo.getRotations().get(0));
+                            for (StationProcess item : showOrderProcess_sand) {
+                                if (item.getId() == itemCombinCtrViewLeftDrager.getId()) {
+                                    item.setRotation(rotationInfo.getRotations().get(0));
+                                    item.setPositionX(itemCombinCtrViewLeftDrager.getX());
+                                    item.setPositionY(itemCombinCtrViewLeftDrager.getY());
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        gridViewModel = (GridView) findViewById(R.id.gridViewModel);
+        ImageForTypeAdapter imageModelAdapter = new ImageForTypeAdapter(mtx);
+        gridViewModel.setAdapter(imageModelAdapter);
+        if (specialCarType.size() > 0){
+            imageModelAdapter.setData(specialCarType);
+        }
+        gridViewModel.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+            @Override
+            public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
+                if (specialCarType.size() < position){
+                    return false;
+                }
+                RotationInfo chooseItme = (RotationInfo)gridViewModel.getAdapter().getItem(position);
+                showPopMenu(view,chooseItme);
+                return true;
+            }
+        });
+        gridView_assist = (GridView) findViewById(R.id.gridView_assist);
+        gridView_assist.setAdapter(imageForAssistListAdapter);
+
+        //添加辅助台板
+        gridView_assist.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
+                if (flagInEdit) {
+                    Assistplate assistplate = assistList.get(i);
+                    AssistPlateViewDrager layout = new AssistPlateViewDrager(mtx, new StationProcess(), new Station());
+                    layout.getProcess().setAssistType(String.valueOf(assistplate.getId()));
+                    layout.setLengthAndWidth((float) (assistplate.getWidth() * 30 / 120 * (getResources().getDimension(x1)) * SysConstant.SIZE_SCALE),
+                            (float) (assistplate.getLength() * 30 / 120 * (getResources().getDimension(x1)) * SysConstant.SIZE_SCALE));
+                    layout.setX(5 * (getResources().getDimension(x1)) * SysConstant.SIZE_SCALE);
+                    layout.setY(5 * (getResources().getDimension(y1)) * SysConstant.SIZE_SCALE);
+                    //处理第一次存放的时候会有位置偏移的问题
+                    layout.setRootLlyRotation(SandConstants.ROTATION_00);
+
+                    layout.tvProc.setText(assistList.get(i).getName() +"\n"+ (assistList.get(i).getLength()) / 100 + "m" + "*" + (assistList.get(i).getWidth()) / 100 + "m");
+                    layout.getProcess().setStationType(StationProcess.TYPE_ASSIST);
+                    layout.getProcess().setFlag(1);
+                    layout.getProcess().setPositionX(layout.getX());
+                    layout.getProcess().setPositionY(layout.getY());
+                    layout.getProcess().setRotation(SandConstants.ROTATION_00);
+                    layout.openDrag();
+                    combinationControls.add(layout);
+                    mOrderProcesses.add(layout.getProcess());
+                    for(int j=0; j<mOrderProcesses.size(); j++)
+                        mOrderProcesses.get(j).setOrderNo(j + 1);
+                    Collections.sort(combinationControls);
+                    rlControl.addView(layout);
+                }
+            }
+        });
+    }
+
+    @SuppressWarnings("AlibabaAvoidComplexCondition")
+    @TargetApi(Build.VERSION_CODES.JELLY_BEAN)
+    @Override
+    public void onClick(View view) {
+        switch (view.getId()) {
+            case R.id.imgbtnUp:
+                Message msg = new Message();
+                msg.what = UP_DRAGER;
+                handler.sendMessage(msg);
+                break;
+            case R.id.imgbtnDown:
+                Message msg1 = new Message();
+                msg1.what = DOWN_DRAGER;
+                handler.sendMessage(msg1);
+                break;
+            case R.id.btnCreateCar:
+                createOneCarOnSand();
+                break;
+            case R.id.btnRemove:
+                remove();
+                break;
+            case R.id.tvback:
+                finish();
+                break;
+            case R.id.btnConfirm:
+                savePic();
+                break;
+            case R.id.btnArrow:
+                setArrow();
+                break;
+            case R.id.btnHorizontal:
+                HorizonType();
+                break;
+            case R.id.btnVertical:
+                VerticalType();
+                break;
+            case R.id.btnSelect:
+                selectCombinCtrViewLeftDrager = new ArrayList<>();
+                for (int j = 0; j < combinationControls.size(); j++) {
+                    combinationControls.get(j).setSelect(true);
+                    if(true){
+                        selectCombinCtrViewLeftDrager.add(combinationControls.get(j));
+                    }
+                }
+                break;
+        }
+    }
+    boolean longPress;
+    @Override
+    public boolean onTouch(final View view, MotionEvent motionEvent) {
+        switch (view.getId()) {
+            case R.id.imgbtnUp:
+            case R.id.imgbtnDown:
+            case R.id.imgbtnLeft:
+            case R.id.imgbtnRight:
+            case R.id.imgbtnRotationLeft:
+            case R.id.imgbtnRotationRight:
+                switch (motionEvent.getAction()) {
+                    case MotionEvent.ACTION_DOWN: {
+                        longPress = true;
+                        Thread longPressSendCmdThread = new Thread() {
+                            @Override
+                            public void run() {
+                                super.run();
+                                while (true) {
+                                    if (longPress == true) {//长按连续发送命令
+                                        try {
+                                            Message msg = new Message();
+                                            switch (view.getId()) {
+                                                case R.id.imgbtnUp:
+                                                    msg.what = UP_DRAGER;
+                                                    break;
+                                                case R.id.imgbtnDown:
+                                                    msg.what = DOWN_DRAGER;
+                                                    break;
+                                                case R.id.imgbtnLeft:
+                                                    msg.what = LEFT_DRAGER;
+                                                    break;
+                                                case R.id.imgbtnRight:
+                                                    msg.what = RIGHT_DRAGER;
+                                                    break;
+                                                case R.id.imgbtnRotationLeft:
+                                                    msg.what = REVOLVE_LEFT;
+                                                    break;
+                                                case R.id.imgbtnRotationRight:
+                                                    msg.what = REVOLVE_RIGHT;
+                                                    break;
+                                            }
+                                            handler.sendMessage(msg);
+                                            Thread.sleep(100);//1秒发送一次
+                                        } catch (InterruptedException e) {
+                                            e.printStackTrace();
+                                        }
+                                    } else {
+                                        break;//没有按下，退出循环
+                                    }
+                                }
+                            }
+                        };
+                        longPressSendCmdThread.start();
+                        break;
+                    }
+                    case MotionEvent.ACTION_UP: {
+                        longPress = false;
+                    }
+                }
+                return true;
+        }
+        return false;
+    }
+    //region   Handler消息处理
+    private static final int SAVE_SUCC = 1005;
+    private static final int SAVE_FAIL = 1006;
+    private static final int UP_DRAGER = 1007;// 向上移
+    private static final int DOWN_DRAGER = 1008;// 向下移
+    private static final int LEFT_DRAGER = 1009;// 向左移
+    private static final int RIGHT_DRAGER = 1010;// 向右移
+    private static final int REVOLVE_LEFT = 1015;   //向左旋转
+    private static final int REVOLVE_RIGHT = 1016;   //向左旋转
+
+    Handler handler = new Handler() {
+        @Override
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+                case UP_DRAGER:
+                    for (CombinCtrViewLeftDrager itemCombinCtrViewLeftDrager:
+                            combinationControls) {
+                        if (itemCombinCtrViewLeftDrager.isSelect()){
+                            itemCombinCtrViewLeftDrager.MoveDrager(true, 3);
+                        }
+                    }
+                    break;
+                case DOWN_DRAGER:
+                    for (CombinCtrViewLeftDrager itemCombinCtrViewLeftDrager:
+                            combinationControls) {
+                        if (itemCombinCtrViewLeftDrager.isSelect()){
+                            itemCombinCtrViewLeftDrager.MoveDrager(false, 3);
+                        }
+                    }
+                    break;
+                case LEFT_DRAGER:
+                    for (CombinCtrViewLeftDrager itemCombinCtrViewLeftDrager:
+                            combinationControls) {
+                        if (itemCombinCtrViewLeftDrager.isSelect()){
+                            itemCombinCtrViewLeftDrager.LeftMoveDrager(3);
+                        }
+                    }
+                    break;
+                case RIGHT_DRAGER:
+                    for (CombinCtrViewLeftDrager itemCombinCtrViewLeftDrager:
+                            combinationControls) {
+                        if (itemCombinCtrViewLeftDrager.isSelect()){
+                            itemCombinCtrViewLeftDrager.RightMoveDrager(3);
+                        }
+                    }
+                    break;
+                case REVOLVE_LEFT:
+                    //左旋转处理
+                    for (CombinCtrViewLeftDrager itemCombinCtrViewLeftDrager:
+                            combinationControls) {
+                        if (itemCombinCtrViewLeftDrager.isSelect()){
+                            itemCombinCtrViewLeftDrager.LeftRevolveDrager();
+                        }
+                    }
+                    break;
+                case REVOLVE_RIGHT:
+                    for (CombinCtrViewLeftDrager itemCombinCtrViewLeftDrager:
+                            combinationControls) {
+                        if (itemCombinCtrViewLeftDrager.isSelect()){
+                            itemCombinCtrViewLeftDrager.RightRevolveDrager();
+                        }
+                    }
+                    break;
+                case SAVE_SUCC:
+                    AlertDialog dialog = new AlertDialog.Builder(mtx).create();
+                    DialogUtil dialogUtil=new DialogUtil(mtx,dialog,getResources().getString(R.string.save_succ),false);
+                    dialogUtil.show();
+                    break;
+                case  SAVE_FAIL:
+                    AlertDialog dialogFail = new AlertDialog.Builder(mtx).create();
+                    DialogUtil dialogUtilFail=new DialogUtil(mtx,dialogFail,getResources().getString(R.string.save_fail),false);
+                    dialogUtilFail.show();
+                    break;
+                default:break;
+            }
+        }
+    };
+
+    private void deleteSelectItem(CombinCtrViewLeftDrager tmpItem){
+        for(int i=selectCombinCtrViewLeftDrager.size()-1;i>=0;i--)
+        {
+            CombinCtrViewLeftDrager compareItem=selectCombinCtrViewLeftDrager.get(i);
+            if(compareItem == tmpItem)
+            {
+                selectCombinCtrViewLeftDrager.remove(compareItem);
+            }
+        }
+    }
+    /**
+     * 获取数据库的特殊车型
+     * @param bbm 账户部门
+     * @return
+     */
+    private void getParticularType(Context context,String bbm){
+        String url = URLConstant.getSandCarTypeByBm(bbm);
+        new OkHttpUtil(context).get(url, new OkHttpUtil.HttpCallback() {
+            @Override
+            public void onStart() {
+
+            }
+
+            @Override
+            public void onSuccess(String data) throws JSONException {
+                if (!StringUtils.isEmpty(data)){
+                    List<RotationInfo> rotationInfos = RotationInfo.getRotationInfoList();
+                    ImageForListAdapter imageAdapter = new ImageForListAdapter(mtx);
+                    imageAdapter.setData(rotationInfos);
+                    specialCarType = (List<RotationInfo>) com.alibaba.fastjson.JSONArray.parseArray(data,RotationInfo.class);
+                    List<RotationInfo> temp = RotationInfo.switchCarType(specialCarType,false);
+                    specialCarType.clear();
+                    specialCarType.addAll(temp);
+                    ImageForTypeAdapter imageModelAdapter = new ImageForTypeAdapter(mtx);
+                    gridViewModel.setAdapter(imageModelAdapter);
+                    imageModelAdapter.setData(specialCarType);
+                    imageModelAdapter.notifyDataSetChanged();
+                }
+            }
+
+            @Override
+            public void onError(String msg) {
+
+            }
+        });
+    }
+
+
+    private void createOneCarOnSand(){
+        if (limitCarNum == 0){
+            ToastUtils.show(mtx, getResources().getString(R.string.warning_car_number));
+            return;
+        }
+        limitCarNum--;
+        CombinCtrViewLeftDrager layout = new CombinCtrViewLeftDrager(mtx, new StationProcess(), false);
+        int equipNum = sortList.get(0);
+        sortList.remove(new Integer(equipNum));
+        switch (equipNum%7){
+            case 1:
+                layout.colorll.setBackgroundResource(R.drawable.button_shape_cartype_01);
+                break;
+            case 2:
+                layout.colorll.setBackgroundResource(R.drawable.button_shape_cartype_02);
+                break;
+            case 3:
+                layout.colorll.setBackgroundResource(R.drawable.button_shape_cartype_03);
+                break;
+            case 4:
+                layout.colorll.setBackgroundResource(R.drawable.button_shape_cartype_04);
+                break;
+            case 5:
+                layout.colorll.setBackgroundResource(R.drawable.button_shape_cartype_05);
+                break;
+            case 6:
+                layout.colorll.setBackgroundResource(R.drawable.button_shape_cartype_06);
+                break;
+            default:
+                break;
+        }
+        OrderProcess temp = new OrderProcess();
+        temp.setRotation(0);
+        layout.getProcess().addProcess(temp);
+        layout.getProcess().setAssistType("0");
+        layout.setId(equipNum);
+        layout.tvSort.setText(equipNum+"");
+        layout.setLengthAndWidth((float) (120 * 30 / 120 * (getResources().getDimension(x1)) * SysConstant.SIZE_SCALE),
+                (float) (60 * 30 / 120 * (getResources().getDimension(x1)) * SysConstant.SIZE_SCALE));
+        layout.setX(5 * (getResources().getDimension(x1)) * SysConstant.SIZE_SCALE);
+        layout.setY(5 * (getResources().getDimension(y1)) * SysConstant.SIZE_SCALE);
+        //处理第一次存放的时候会有位置偏移的问题
+        layout.setRootLlyRotation(SandConstants.ROTATION_00);
+        layout.setLongClickable(false);
+        layout.tvProc.setText("");
+        layout.getProcess().setFlag(1);
+        layout.getProcess().setPositionX(layout.getX());
+        layout.getProcess().setPositionY(layout.getY());
+        layout.getProcess().setRotation(SandConstants.ROTATION_00);
+        layout.openDrag();
+        combinationControls.add(layout);
+        mOrderProcesses.add(layout.getProcess());
+        for(int j=0; j<mOrderProcesses.size(); j++)
+            mOrderProcesses.get(j).setOrderNo(j + 1);
+        Collections.sort(combinationControls);
+        rlControl.addView(layout);
+    }
+
+    //todo:辅助台板的代码需要删除
+    public void remove()
+    {
+        int i = 0;
+        List<CombinCtrViewLeftDrager> removeList = new ArrayList<>();
+        List<CombinCtrViewLeftDrager> removeList_1=new ArrayList<>();
+        for (; i < combinationControls.size(); i++) {
+            if(combinationControls.get(i).isSelect())
+            {
+                if(combinationControls.get(i).getType().equals("0"))
+                {
+                    limitCarNum++;
+                    int sort = Integer.parseInt(combinationControls.get(i).tvSort.getText().toString());
+                    sortList.add(new Integer(sort));
+                    Collections.sort(sortList);
+                    removeList.add(combinationControls.get(i));
+                }else if(combinationControls.get(i).isSelect()){
+                    removeList_1.add(combinationControls.get(i));
+                }
+            }
+        }
+        //移除辅助台板
+        if(removeList_1.size()>0){
+            for (CombinCtrViewLeftDrager drager : removeList_1
+            ) {
+                Station station = new Station();
+                StationView stationView = new StationView(mtx, station);
+                //从布局中删除
+                rlControl.removeView(drager);
+                //从控件列表中删除
+                combinationControls.remove(drager);
+            }
+        }
+
+        if (removeList.size() > 0) {
+            resetPosition(removeList, false);
+        }
+    }
+
+    private void resetPosition(List<CombinCtrViewLeftDrager> removeList, boolean reset) {
+        //循环需要被删除的控件列表
+        for (CombinCtrViewLeftDrager drager : removeList
+        ) {
+            float postX = drager.getProcess().getPositionX();
+            float postY = drager.getProcess().getPositionY();
+            int sort = drager.getProcess().getSort();
+            Station station = new Station();
+            StationView stationView = new StationView(mtx, station);
+
+            //从布局中删除
+            rlControl.removeView(drager);
+            //从控件列表中删除
+            combinationControls.remove(drager);
+            //从沙盘上的工序列表中删除
+            showOrderProcess_sand.remove(drager.getProcess());
+            //从选中列表中移除
+            deleteSelectItem(drager);
+            //清空工序在沙盘上的各项数据
+            drager.getProcess().setStationid(0);
+            drager.getProcess().setStationViewNum(0);
+            if (null != drager.getmStationView()) {
+                drager.getmStationView().setBackVisibility(VISIBLE);
+                stationView = drager.getmStationView();
+            }
+            drager.getProcess().setFlag(0);
+            drager.getProcess().setPositionX(0);
+            drager.getProcess().setPositionY(0);
+
+            //清空左侧列表中的工序的各项数据
+            for (StationProcess item : mOrderProcesses) {
+                if (item.getId() == drager.getProcess().getId()) {
+                    item.setFlag(0);
+                    item.setStationid(0);
+                    item.setStationViewNum(0);
+                    item.setPositionX(0);
+                    item.setPositionY(0);
+                    item.setRotation(SandConstants.ROTATION_00);
+                    item.setFeed_port(false);
+                    break;
+                }
+            }
+            List<StationProcess> remove=new ArrayList<>();
+            for(StationProcess item:list){
+                List<OrderProcess> processes=item.getmProcess();
+                if(processes.get(0).getId()==drager.getProcess().getId())
+                {
+                    remove.add(item);
+                }
+            }
+            list.removeAll(remove);
+            stationView.getMstation().setUse(false);
+            StationUtil.UpdateOrderId(stationView.getMstation().getId(),0);
+            if (reset) {
+                Collections.sort(combinationControls);
+                for (CombinCtrViewLeftDrager combination : combinationControls
+                ) {
+                    if (combination.getProcess().getSort() > sort) {
+                        float tempX = combination.getProcess().getPositionX();
+                        float tempY = combination.getProcess().getPositionY();
+                        StationView tempStationView = combination.getmStationView();
+
+                        combination.setX(postX);
+                        combination.setY(postY);
+                        combination.getProcess().setPositionX(postX);
+                        combination.getProcess().setPositionY(postY);
+                        combination.setmStationView(stationView);
+                        combination.getmStationView().setBackVisibility(GONE);
+
+                        postX = tempX;
+                        postY = tempY;
+                        stationView = tempStationView;
+                        stationView.setBackVisibility(VISIBLE);
+                    }
+                }
+            }
+        }
+    }
+    public void setArrow(){
+        CombinCtrViewLeftDrager layout = new CombinCtrViewLeftDrager(mtx, new StationProcess(), false);
+        layout.colorll.setVisibility(View.GONE);
+        layout.tvSort.setVisibility(View.GONE);
+        layout.tvWorker.setVisibility(View.GONE);
+        layout.tvMachNum.setVisibility(View.GONE);
+        layout.tvTotal.setVisibility(View.GONE);
+        ViewGroup.LayoutParams params = layout.ImgWorker.getLayoutParams();
+        params.height= 50;
+        params.width = 30;
+        layout.ImgWorker.setLayoutParams(params);
+        layout.ImgWorker.setBackgroundResource(R.drawable.car_arrow);
+        layout.setX(5 * (getResources().getDimension(x1)) * SysConstant.SIZE_SCALE);
+        layout.setY(5 * (getResources().getDimension(y1)) * SysConstant.SIZE_SCALE);
+        layout.setType("arrow");
+        //处理第一次存放的时候会有位置偏移的问题
+        layout.setRootLlyRotation(SandConstants.ROTATION_00);
+        layout.setLongClickable(false);
+        layout.getProcess().setPositionX(layout.getX());
+        layout.getProcess().setPositionY(layout.getY());
+        layout.getProcess().setRotation(SandConstants.ROTATION_00);
+        layout.openDrag();
+        combinationControls.add(layout);
+        Collections.sort(combinationControls);
+        rlControl.addView(layout);
+    }
+
+    /**
+     * 截图
+     */
+    private ScreenShotView screenShotView;
+    private Bitmap bmp;
+    private Bitmap ocrBitmap;
+    private TextView certainBtn;
+    private TextView cancelBtn;
+    private TextView restartBtn;
+    private int screenWidth;
+    private int screenHeight;
+    private void savePic(){
+        Dialog dialog = new Dialog(mtx);
+        for (CombinCtrViewLeftDrager item: combinationControls
+             ) {
+            //设置所有选中的控件为false
+            item.setSelect(false);
+        }
+        dialog.setContentView(LayoutInflater.from(mtx).inflate(R.layout.layout_cut_pic, null));
+        final Bitmap bitmap = BitmapUtils.getBitmapByScrollView(mScrollView);
+        System.out.println("BitMap"+bitmap.getHeight() + "bitW"+bitmap.getWidth());
+        screenShotView = (ScreenShotView) dialog.findViewById(R.id.screenShotView);
+        cancelBtn = (TextView) dialog.findViewById(R.id.cancel_btn);
+        cancelBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                dialog.dismiss();
+            }
+        });
+        certainBtn = (TextView) dialog.findViewById(R.id.certain_btn);
+        certainBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (ocrBitmap != null) {
+                    screenShotView.restart();
+                    screenShotView.setBitmap(ocrBitmap,ocrBitmap.getHeight(),ocrBitmap.getWidth());
+                    saveEditing(false,dialog);
+                }else{
+                    Toast.makeText(SandCarTypeSetActivity.this,getResources().getString(R.string.choose_ocr_area),Toast.LENGTH_SHORT).show();
+                }
+
+            }
+        });
+        restartBtn = (TextView)dialog.findViewById(R.id.restart_btn);
+        restartBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                screenShotView.restart();
+            }
+        });
+        //获取控件信息
+        screenWidth = mScrollView.getWidth();
+        screenHeight = mScrollView.getHeight();
+        Resources r = this.getResources();
+        bmp = bitmap;
+        screenShotView.setBitmap(bmp, screenHeight, screenWidth);
+        final boolean[] moveFlag = {false};
+        screenShotView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        screenShotView.setStartDot(new Dot(event.getX(), event.getY()));
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        screenShotView.setEndDot(new Dot(event.getX(), event.getY()));
+                        screenShotView.setBitmap(bmp, screenHeight, screenWidth);
+                        moveFlag[0] =true;
+                        break;
+                    case MotionEvent.ACTION_UP:
+                        if (moveFlag[0]){
+                            ocrBitmap = screenShotView.getBitmap();
+                            moveFlag[0] =false;
+                        }
+                        break;
+                }
+                return true;
+            }
+        });
+        dialog.show();
+    }
+    //保存当前状态和信息
+    private void saveEditing(final boolean isHandler,final Dialog dialog)
+    {
+        mWeiboDialog = WeiboDialogUtils.createLoadingDialog(mtx, getResources().getString(R.string.loading));
+        //此线程保存编辑区
+        new Thread(new Runnable() {
+            @RequiresApi(api = Build.VERSION_CODES.N)
+            @Override
+            public void run() {
+                try {
+                    boolean first = true;
+                    float firstX = 0.00f;
+                    float firstY = 0.00f;
+                    RotationInfo rotationInfo = new RotationInfo();
+                    List<CombinCtrViewLeftDrager> dragerList = new ArrayList<>();
+                    List<CombinCtrViewLeftDrager> assList = new ArrayList<>();
+                    for (CombinCtrViewLeftDrager item:combinationControls
+                         ) {
+                        if (item.getType().equals("0")){
+                            dragerList.add(item);
+                        }else if (item.getType().equals("1")){
+                           assList.add(item);
+                        }
+                    }
+                    dragerList.sort(Comparator.comparing(CombinCtrViewLeftDrager::getId,Comparator.naturalOrder()));
+                    combinationControls.clear();
+                    combinationControls.addAll(dragerList);
+                    combinationControls.addAll(assList);
+                    for (CombinCtrViewLeftDrager itemCombinCtrViewLeftDrager :
+                            combinationControls) {
+                        // 沙盘上的可移动控件(非箭头) 整理各个参数的坐标(偏移量)
+                        if (itemCombinCtrViewLeftDrager.getType().equals("0")){
+                            float x = itemCombinCtrViewLeftDrager.getX();
+                            float y = itemCombinCtrViewLeftDrager.getY();
+                            if (first){
+                                firstX = itemCombinCtrViewLeftDrager.getX();
+                                firstY = itemCombinCtrViewLeftDrager.getY();
+                                x = 0.0f;
+                                y = 0.0f;
+                                first = false;
+                            }else{
+                                x = itemCombinCtrViewLeftDrager.getX() - firstX;
+                                y = itemCombinCtrViewLeftDrager.getY() - firstY;
+                            }
+                            float rotation = itemCombinCtrViewLeftDrager.getProcess().getRotation();
+                            rotationInfo.getRotations().add((int) rotation);
+                            RotationInfo.DefineInformation defineInformation= new RotationInfo.DefineInformation();
+                            defineInformation.setType("0");
+                            defineInformation.setRotation((int) rotation);
+                            defineInformation.setX(x);
+                            defineInformation.setY(y);
+                            rotationInfo.getDetailInformationList().add(defineInformation);
+                        }else if (itemCombinCtrViewLeftDrager.getType().equals("1")){
+                            if (rotationInfo.getRotations().size() == 0){
+                                //第一个导入了辅助台版，去找第一个车
+                                for (CombinCtrViewLeftDrager item: combinationControls
+                                     ) {
+                                    if (item.getType().equals("0")){
+                                        firstX = itemCombinCtrViewLeftDrager.getX();
+                                        firstY = itemCombinCtrViewLeftDrager.getY();
+                                        break;
+                                    }
+                                }
+                            }
+                            float x = itemCombinCtrViewLeftDrager.getX() - firstX;
+                            float y = itemCombinCtrViewLeftDrager.getY() - firstY;
+                            RotationInfo.DefineInformation defineInformation= new RotationInfo.DefineInformation();
+                            defineInformation.setType("1");
+                            defineInformation.setRotation((int)itemCombinCtrViewLeftDrager.getProcess().getRotation());
+                            defineInformation.setAssistType(itemCombinCtrViewLeftDrager.getProcess().getAssistType());
+                            defineInformation.setX(x);
+                            defineInformation.setY(y);
+                            rotationInfo.getDetailInformationList().add(defineInformation);
+                        }
+                    }
+                    rotationInfo.setShape("new_type");
+                    rotationInfo.setUse(true);
+                    rotationInfo.setFactory(workerFactory);
+                    rotationInfo.setDetailInformation(new Gson().toJson(rotationInfo.getDetailInformationList()));
+                    //生成图片名
+                    SimpleDateFormat sdf=new SimpleDateFormat("yyyyMMddHHmmss");
+                    StringBuilder sb=new StringBuilder();
+                    sb.append(sdf.format(new Date()));
+                    Random rnd=new Random();
+                    sb.append(rnd.nextInt(100));
+                    sb.append("_"+loginName+"&"+workerFactory+"&"+workerShopNum+"-"+workerGroupNo+".png");
+                    try {
+                        File file = FileUtil.saveBitmapToFile(ocrBitmap, sb.toString(),mtx);
+                        if (file.exists()) {
+                            String uploadUrl = "http://" + Constant.JAVA_SERVER_IP + ":" + Constant.JAVA_SERVER_PORT + "/uploadModelPic";
+                            new OkHttpUtil(mtx).FileSend(file.getPath(), new HashMap<String, Object>(), uploadUrl, new OkHttpUtil.HttpCallback() {
+                                @Override
+                                public void onStart() {}
+                                @Override
+                                public void onSuccess(String data) throws JSONException {
+                                    JSONObject object = new JSONObject(data);
+                                    int retCode = object.optInt("code");
+                                    if (retCode == AppConstants.INT_RESULT_STATE_SUCCEED) {
+                                        ToastUtils.show(mtx, getResources().getString(R.string.upload_car_pic_success));
+                                        String address = object.getString("data");
+                                        rotationInfo.setPic(address);
+                                        InsertInfo(rotationInfo);
+                                        dialog.dismiss();
+                                    }
+                                    mWeiboDialog.dismiss();
+                                }
+
+                                @Override
+                                public void onError(String msg) {
+                                    ToastUtils.show(mtx, getResources().getString(R.string.upload_car_pic_fail));
+                                    mWeiboDialog.dismiss();
+                                }
+                            });
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }).start();
+    }
+
+    public void InsertInfo(RotationInfo rotationInfo){
+        String url = URLConstant.insertSandCarType();
+        String json = new Gson().toJson(rotationInfo);
+        new OkHttpUtil(mtx).postJson(url, json, new OkHttpUtil.HttpCallback() {
+            @Override
+            public void onStart() {
+
+            }
+
+            @Override
+            public void onSuccess(String data) throws JSONException {
+                Integer id = new Gson().fromJson(data, new TypeToken<Integer>() {
+                }.getType());
+                rotationInfo.setId(id);
+                specialCarType.add(0,rotationInfo);
+                ImageForTypeAdapter imageModelAdapter = new ImageForTypeAdapter(mtx);
+                gridViewModel.setAdapter(imageModelAdapter);
+                imageModelAdapter.setData(specialCarType);
+                imageModelAdapter.notifyDataSetChanged();
+                ToastUtils.show(mtx, getResources().getString(R.string.upload_car_data_success));
+            }
+
+            @Override
+            public void onError(String msg) {
+                ToastUtils.show(mtx, getResources().getString(R.string.upload_car_data_fail));
+            }
+        });
+    }
+    @Override
+    public void finish() {
+        super.finish();
+        combinationControls.clear();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event){
+        if (keyCode== KeyEvent.KEYCODE_BACK) {
+            combinationControls.clear();
+            finish();
+        }
+        return false;
+    }
+
+    private void deleteCarType(int id,RotationInfo chooseItem){
+        String url = URLConstant.deleteCarType(id);
+        new OkHttpUtil(mtx).get(url, new OkHttpUtil.HttpCallback() {
+            @Override
+            public void onStart() {
+
+            }
+
+            @Override
+            public void onSuccess(String data) throws JSONException {
+                boolean response = new Gson().fromJson(data, new TypeToken<Boolean>() {
+                }.getType());
+                if (response){
+                    specialCarType.remove(chooseItem);
+                    ImageForTypeAdapter imageModelAdapter = new ImageForTypeAdapter(mtx);
+                    gridViewModel.setAdapter(imageModelAdapter);
+                    imageModelAdapter.setData(specialCarType);
+                    imageModelAdapter.notifyDataSetChanged();
+                    ToastUtils.show(mtx, getResources().getString(R.string.car_delete_suc));
+                } else {
+                    ToastUtils.show(mtx,getResources().getString(R.string.car_delete_fail));
+                }
+            }
+
+            @Override
+            public void onError(String msg) {
+
+            }
+        });
+    }
+    private void updateCarCondition(int id, boolean flag){
+        String url = URLConstant.updateCarCondition(id,flag,workerFactory);
+        new OkHttpUtil(mtx).get(url, new OkHttpUtil.HttpCallback() {
+            @Override
+            public void onStart() {
+
+            }
+
+            @RequiresApi(api = Build.VERSION_CODES.N)
+            @Override
+            public void onSuccess(String data) throws JSONException {
+                boolean response = new Gson().fromJson(data, new TypeToken<Boolean>() {
+                }.getType());
+                if (response){
+                    setCarTypeSort();
+                    ImageForTypeAdapter imageModelAdapter = new ImageForTypeAdapter(mtx);
+                    gridViewModel.setAdapter(imageModelAdapter);
+                    imageModelAdapter.setData(specialCarType);
+                    imageModelAdapter.notifyDataSetChanged();
+                    if (flag){
+                        ToastUtils.show(mtx, getResources().getString(R.string.car_show_suc));
+                    }else{
+                        ToastUtils.show(mtx, getResources().getString(R.string.car_hide_suc));
+                    }
+                } else {
+                    if (flag){
+                        ToastUtils.show(mtx,getResources().getString(R.string.car_show_fail));
+                    }else{
+                        ToastUtils.show(mtx,getResources().getString(R.string.car_hide_fail));
+                    }
+                }
+            }
+
+            @Override
+            public void onError(String msg) {
+
+            }
+        });
+    }
+
+    /**
+     * 长按弹出目录
+     * @param view
+     * @param chooseItem 选中的控件信息
+     */
+    private void showPopMenu(View view,RotationInfo chooseItem){
+        final PopupMenu menu = new PopupMenu(SandCarTypeSetActivity.this, view);
+        menu.getMenuInflater().inflate(R.menu.sand_car_set_menu, menu.getMenu());
+        menu.getMenu().findItem(R.id.item_top).setVisible(true);   //置顶
+        if (chooseItem.getShape().contains("new_type"))
+            menu.getMenu().findItem(R.id.item_delete).setVisible(true);    //删除
+        if (chooseItem.isUse()){
+            menu.getMenu().findItem(R.id.item_hide).setVisible(true);      //隐藏
+        }else{
+            menu.getMenu().findItem(R.id.item_show).setVisible(true);      //显示
+        }
+        if (chooseItem.getUpdatetime() == 0){
+            menu.getMenu().findItem(R.id.item_top).setVisible(true);
+            menu.getMenu().findItem(R.id.item_cancle_top).setVisible(false);
+        }else{
+            menu.getMenu().findItem(R.id.item_top).setVisible(false);
+            menu.getMenu().findItem(R.id.item_cancle_top).setVisible(true);
+        }
+        menu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
+            @Override
+            public boolean onMenuItemClick(MenuItem item) {
+                switch (item.getItemId()) {
+                    case R.id.item_top:
+                        //todo 处理置顶逻辑
+                        updateCarTop(chooseItem,true);
+                        break;
+                    case R.id.item_delete:
+                        android.support.v7.app.AlertDialog Dialog = new android.support.v7.app.AlertDialog.Builder(mtx).create();
+                        DialogUtil dialogUtil = new DialogUtil(mtx, Dialog, getResources().getString(R.string.car_delete_confirm), true);
+                        dialogUtil.show();
+                        dialogUtil.setBtnNoClickListener(new DialogUtil.btnNoClick() {
+                            @Override
+                            public void setbtnNoClick(View view) {
+                                dialogUtil.dismiss();
+                            }
+                        });
+                        dialogUtil.setBtnCancelClickListener(new DialogUtil.btnCancelClick() {
+                            @Override
+                            public void setbtnCancelClick(View view) {
+                                dialogUtil.dismiss();
+                            }
+                        });
+                        dialogUtil.setBtnSureClickListener(new DialogUtil.btnSureClick() {
+                            @Override
+                            public void setbtnSureClick(View view) {
+                                int id = chooseItem.getId();
+                                deleteCarType(id,chooseItem);
+                                dialogUtil.dismiss();
+                            }
+                        });
+                        break;
+                    case R.id.item_hide:
+                        specialCarType.remove(chooseItem);
+                        chooseItem.setUse(false);
+                        specialCarType.add(chooseItem);
+                        updateCarCondition(chooseItem.getId(),false);
+                        break;
+                    case R.id.item_show:
+                        for (RotationInfo info:specialCarType
+                             ) {
+                            if (chooseItem.getId() == info.getId()){
+                                info.setUse(true);
+                            }
+                        }
+                        updateCarCondition(chooseItem.getId(),true);
+                        break;
+                    case R.id.item_cancle_top:
+                        updateCarTop(chooseItem,false);
+                        break;
+                    default:
+                        break;
+                }
+                return true;
+            }
+        });
+
+        menu.setOnDismissListener(new PopupMenu.OnDismissListener() {
+            @Override
+            public void onDismiss(PopupMenu menu) {
+            }
+        });
+        menu.show();
+    }
+
+    private void updateCarTop(RotationInfo rotationInfo,boolean isTop){
+        //置顶更新当前id的字段
+        String url = URLConstant.updateCarTopTime(rotationInfo.getId(),isTop);
+        new OkHttpUtil(mtx).get(url, new OkHttpUtil.HttpCallback() {
+            @Override
+            public void onStart() {
+
+            }
+
+            @RequiresApi(api = Build.VERSION_CODES.N)
+            @Override
+            public void onSuccess(String data) throws JSONException {
+                boolean response = new Gson().fromJson(data, new TypeToken<Boolean>() {
+                }.getType());
+                if (response){
+                    if (isTop){
+                        specialCarType.remove(rotationInfo);
+                        //暂时设置时间戳 不会存储到数据库中
+                        rotationInfo.setUpdatetime(System.currentTimeMillis()/1000);
+                        specialCarType.add(0,rotationInfo);
+                        setCarTypeSort();
+                        ToastUtils.show(mtx, getResources().getString(R.string.car_top_suc));
+                    } else{
+                        specialCarType.remove(rotationInfo);
+                        rotationInfo.setUpdatetime(0);
+                        specialCarType.add(rotationInfo);
+                        setCarTypeSort();
+                        ToastUtils.show(mtx, getResources().getString(R.string.cancle_top));
+                    }
+                    ImageForTypeAdapter imageModelAdapter = new ImageForTypeAdapter(mtx);
+                    gridViewModel.setAdapter(imageModelAdapter);
+                    imageModelAdapter.setData(specialCarType);
+                    imageModelAdapter.notifyDataSetChanged();
+                } else {
+                    ToastUtils.show(mtx,getResources().getString(R.string.car_top_fail));
+                }
+            }
+
+            @Override
+            public void onError(String msg) {
+
+            }
+        });
+    }
+
+    /**
+     * 处理特殊车型全局变量的顺序问题
+     */
+    @RequiresApi(api = Build.VERSION_CODES.N)
+    private void setCarTypeSort(){
+        List<RotationInfo> tempFalse = new ArrayList<>();
+        List<RotationInfo> topList = new ArrayList<>();
+        for (RotationInfo info:specialCarType
+        ) {
+            if (!info.isUse()){
+                tempFalse.add(info);
+            }
+            if (info.getUpdatetime() != 0){
+                topList.add(info);
+            }
+        }
+        //按车型数量、id升序排序
+        specialCarType.sort(Comparator.comparing(
+                RotationInfo::getTypeNumber,Comparator.naturalOrder()).thenComparing(RotationInfo::getId,Comparator.naturalOrder()));
+        //将置顶的车型放在最前面
+        topList.sort(Comparator.comparing(RotationInfo::getUpdatetime,Comparator.reverseOrder()));
+        specialCarType.removeAll(topList);
+        specialCarType.addAll(0,topList);
+        //将隐藏的车型放在后面
+        specialCarType.removeAll(tempFalse);
+        specialCarType.addAll(tempFalse);
+    }
+    private void HorizonType(){
+        boolean isFirst=true;
+        float alignPosition=0;
+        float firstRotation=0;
+        for (CombinCtrViewLeftDrager combination : combinationControls) {
+            if (isFirst && combination.isSelect()) {
+                /* 获得第一个 */
+                isFirst = false;
+                alignPosition = combination.getY();
+                firstRotation = combination.getRotation();
+            } else if (combination.isSelect()) {
+                float y = 0;
+                /* 对不同朝向的车台进行处理 */
+                if (firstRotation!=combination.getProcess().getRotation() &&(combination.getProcess().getRotation() == SandConstants.ROTATION_45
+                        || combination.getProcess().getRotation() == SandConstants.ROTATION_135)) {
+                    y = alignPosition - combination.getHeight() / 3;
+                } else if (firstRotation!=combination.getProcess().getRotation() &&(combination.getProcess().getRotation() == SandConstants.ROTATION_90)) {
+                    y = alignPosition - combination.getHeight() / 2;
+                } else {
+                    y = alignPosition;
+                }
+                combination.setY(y);
+                combination.getProcess().setPositionY(y);
+            }
+        }
+    }
+    private void VerticalType(){
+        boolean isFirst=true;
+        float alignPosition=0;
+        float first_rotation=0;
+        for (CombinCtrViewLeftDrager combination : combinationControls
+        ) {
+            if (isFirst && combination.isSelect()) {
+                isFirst = false;
+                alignPosition = combination.getX();
+                first_rotation = combination.getProcess().getRotation();
+            } else if (combination.isSelect()) {
+                float rotation = combination.getProcess().getRotation();
+                float x = 0;
+
+                /* 对不同朝向的车台进行处理 */
+
+                if (first_rotation != rotation &&(rotation ==  SandConstants.ROTATION_90
+                        || rotation == SandConstants.ROTATION_135
+                        || rotation == SandConstants.ROTATION_225
+                        || rotation == SandConstants.ROTATION_270)) {
+                    x = alignPosition + combination.getwidth() * 5 / 8;
+                } else if (first_rotation != rotation &&(rotation == SandConstants.ROTATION_180)) {
+                    x = alignPosition + combination.getwidth() * 9 / 8;
+                } else {
+                    x = alignPosition ;
+                }
+                combination.setX(x);
+                combination.getProcess().setPositionX(x);
+            }
+        }
+    }
+}
